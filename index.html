@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>辽宁省地价时空演化系统</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;600;700&family=Manrope:wght@300;600&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+
+    <style>
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+        .glass-panel { backdrop-filter: blur(25px); background: rgba(11, 20, 38, 0.4); border: 0.5px solid rgba(255, 255, 255, 0.15); }
+        .grid-line { background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.03) 50%, transparent); width: 1px; height: 100%; }
+        body { background-color: #0b1426; overflow: hidden; }
+        .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { display: none !important; }
+        #timeline-slider { -webkit-appearance: none; background: rgba(255,255,255,0.1); height: 3px; border-radius: 5px; outline: none; cursor: pointer; }
+        #timeline-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #14d1ff; border-radius: 50%; box-shadow: 0 0 15px rgba(20,209,255,0.8); transition: transform 0.1s;}
+        #timeline-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    </style>
+    <script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-surface":"#bee9ff","on-primary":"#2f3131","tertiary-fixed-dim":"#edc06b","primary-fixed-dim":"#c6c6c7",background:"#00161f","tertiary-container":"#ffdea6","inverse-primary":"#5d5f5f","on-tertiary-fixed":"#271900","surface-container-low":"#001f2a","on-tertiary-fixed-variant":"#5e4200","outline-variant":"#444748","on-secondary-fixed":"#001f28","on-tertiary":"#412d00","surface-bright":"#043e52","primary-fixed":"#e2e2e2","on-error":"#690005","surface-container-high":"#002e3e","primary-container":"#e2e2e2","inverse-on-surface":"#003546","inverse-surface":"#bee9ff","secondary-fixed-dim":"#4cd6ff","secondary-fixed":"#b7eaff","on-surface-variant":"#c4c7c8",error:"#ffb4ab","error-container":"#93000a","surface-variant":"#003a4c","on-background":"#bee9ff","on-tertiary-container":"#815e11","tertiary-fixed":"#ffdea6","on-primary-fixed":"#1a1c1c",tertiary:"#ffffff",outline:"#8e9192","surface-dim":"#00161f","surface-tint":"#c6c6c7","on-secondary":"#003543","on-primary-container":"#636565","surface-container":"#002330","on-secondary-container":"#00566b","on-error-container":"#ffdad6","on-secondary-fixed-variant":"#004e60","secondary-container":"#14d1ff","surface-container-highest":"#003a4c","on-primary-fixed-variant":"#454747",secondary:"#a6e6ff",primary:"#ffffff",surface:"#00161f","surface-container-lowest":"#001018"},fontFamily:{"metric-value":["Space Grotesk"],"body-elegant":["Manrope"],"display-title":["Noto Serif SC"],"city-heading":["Noto Serif SC"],"metric-label":["Manrope"]}}}};</script>
+</head>
+<body class="text-on-surface font-body-elegant selection:bg-secondary-container selection:text-on-secondary-container">
+
+    <div class="fixed inset-0 z-0 bg-background">
+        <div id="map" class="absolute inset-0 w-full h-full opacity-60 mix-blend-luminosity grayscale contrast-125"></div>
+        <div id="overlay-map" class="absolute inset-0 w-full h-full pointer-events-none z-10"></div>
+        
+        <div class="absolute inset-0 flex justify-between px-48 pointer-events-none opacity-20 z-20">
+            <div class="grid-line"></div><div class="grid-line"></div><div class="grid-line"></div><div class="grid-line"></div><div class="grid-line"></div>
+        </div>
+    </div>
+
+    <header class="bg-background/80 backdrop-blur-[25px] flex justify-between items-center px-12 h-20 w-full z-50 fixed top-0 border-b-[0.5px] border-white/10">
+        <div class="text-2xl font-display-title font-bold text-white tracking-widest">辽宁省地价演变深度分析</div>
+        <nav class="hidden md:flex items-center space-x-12">
+            <a class="text-white font-medium border-b border-white/60 pb-1 font-serif tracking-tight leading-none cursor-pointer" onclick="resetToProvince()">全省概览</a>
+            <a id="nav-kde" class="text-white/40 font-light hover:text-white transition-colors font-serif tracking-tight leading-none cursor-pointer" onclick="toggleAnalysisLayer(event, 'heatmap-layer', 'nav-kde')">核密度分析 (KDE)</a>
+            <a id="nav-sde" class="text-white/40 font-light hover:text-white transition-colors font-serif tracking-tight leading-none cursor-pointer" onclick="toggleAnalysisLayer(event, 'sde-layer', 'nav-sde')">标准差椭圆 (SDE)</a>
+            <a id="nav-invest" class="text-white/40 font-light hover:text-white transition-colors font-serif tracking-tight leading-none cursor-pointer" onclick="openInvestModal(); document.getElementById('main-info-box').style.opacity='0';">投资测算</a>
+        </nav>
+    </header>
+
+    <aside id="console-panel" class="transition-all duration-500 ease-in-out transform translate-x-0 bg-surface-container-high/60 backdrop-blur-[25px] text-white fixed right-6 top-24 bottom-24 w-80 rounded-sm border-l-[0.5px] border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col p-6 z-40 pointer-events-auto">
+        <div class="border-b border-white/10 pb-6 mb-8 flex justify-between items-start">
+            <div>
+                <h2 class="text-lg font-display-title font-bold text-white mb-1">智库控制台</h2>
+                <p class="text-[10px] tracking-widest opacity-50 uppercase">Liaoning Land Intelligence</p>
+            </div>
+            <button onclick="togglePanel('console-panel', 'console-btn')" class="text-white/50 hover:text-white transition-colors" title="收起控制台">
+                <span class="material-symbols-outlined">keyboard_double_arrow_right</span>
+            </button>
+        </div>
+        <div class="space-y-2 flex-grow overflow-y-auto mb-8">
+            <button onclick="closeDeepAnalysis(); closePolicyPanel(); document.getElementById('main-info-box').style.opacity='1';" class="w-full flex items-center space-x-4 p-3 text-white hover:bg-white/10 border-r-2 border-transparent focus:border-white focus:bg-white/20 transition-all duration-500"><span class="material-symbols-outlined">insights</span><span class="font-sans text-xs tracking-widest uppercase">实时监测</span></button>
+            <button onclick="openDeepAnalysis(); closePolicyPanel(); document.getElementById('main-info-box').style.opacity='0';" class="w-full flex items-center space-x-4 p-3 text-white/50 hover:text-white hover:bg-white/5 focus:text-white focus:bg-white/20 focus:border-r-2 focus:border-white transition-all duration-500"><span class="material-symbols-outlined">history_edu</span><span class="font-sans text-xs tracking-widest uppercase">深度剖析</span></button>
+            <button onclick="openPolicyPanel(); closeDeepAnalysis(); document.getElementById('main-info-box').style.opacity='0';" class="w-full flex items-center space-x-4 p-3 text-white/50 hover:text-white hover:bg-white/5 focus:text-white focus:bg-white/20 focus:border-r-2 focus:border-white transition-all duration-500"><span class="material-symbols-outlined">policy</span><span class="font-sans text-xs tracking-widest uppercase">政策效力</span></button>
+        </div>
+        
+        <div class="glass-panel p-4 rounded-lg">
+            <p id="chart-title" class="font-metric-label text-metric-label text-white/60 mb-4 uppercase">住宅地价时序演化</p>
+            <div id="line-chart" class="h-32 w-full"></div>
+        </div>
+    </aside>
+
+    <main class="relative z-10 pt-32 px-12 h-full flex items-center pointer-events-none">
+        
+        <div id="main-info-box" class="max-w-lg pointer-events-auto transition-all duration-500">
+            <h1 id="city-name" class="font-display-title text-[100px] text-white leading-none mb-4 opacity-90 transition-all">辽宁省</h1>
+            <div class="w-28 h-[1px] bg-white mb-8"></div>
+            <p id="city-desc" class="font-body-elegant text-on-surface text-xl max-w-sm leading-normal font-light transition-all">...</p>
+            <div class="mt-10 flex space-x-6">
+                <button id="price-title" class="px-8 py-2 border border-white/40 text-white font-metric-label tracking-widest hover:bg-white/10 transition-all uppercase">当前全省均价</button>
+                <div class="flex flex-col">
+                    <span class="font-metric-label text-metric-label text-white/40">(CNY/公顷)</span>
+                    <span class="font-metric-value text-4xl text-white transition-all"><span id="city-price">--</span></span>
+                </div>
+            </div>
+        </div>
+        
+        <div id="indicators-panel" class="transition-all duration-500 ease-in-out transform translate-x-0 fixed right-[340px] top-40 w-80 space-y-6 pointer-events-auto">
+            <div class="glass-panel p-6 rounded-sm">
+                <h3 class="font-metric-label text-metric-label text-white uppercase mb-4 flex justify-between items-center">
+                    <span class="flex items-center"><span class="material-symbols-outlined mr-2 text-sm">analytics</span> 空间集聚指标</span>
+                    <button onclick="togglePanel('indicators-panel', 'indicators-btn')" class="text-white/50 hover:text-white transition-colors" title="收起指标面板">
+                        <span class="material-symbols-outlined">keyboard_double_arrow_right</span>
+                    </button>
+                </h3>
+                
+                <div class="flex space-x-4 mb-6 border-b border-white/10 pb-1">
+                    <button id="type-住" class="text-xs text-white pb-1 border-b-2 border-secondary transition-all" onclick="changeLandType('住')">住宅</button>
+                    <button id="type-商" class="text-xs text-white/40 hover:text-white pb-1 border-b-2 border-transparent transition-all" onclick="changeLandType('商')">商业</button>
+                    <button id="type-工" class="text-xs text-white/40 hover:text-white pb-1 border-b-2 border-transparent transition-all" onclick="changeLandType('工')">工矿</button>
+                    <button id="type-综" class="text-xs text-white/40 hover:text-white pb-1 border-b-2 border-transparent transition-all" onclick="changeLandType('综')">综合</button>
+                </div>
+
+                <div class="space-y-8">
+                    <div>
+                        <div class="flex justify-between items-end mb-2">
+                            <span id="moran-title" class="font-body-elegant text-white/60 text-xs">全省住宅 Moran's I</span>
+                            <span id="morans-i" class="font-metric-value text-2xl text-secondary">0.241</span>
+                        </div>
+                        <div class="w-full h-1 bg-white/10"><div id="moran-bar" class="h-full bg-secondary" style="width: 24.1%;"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-end mb-2">
+                            <span class="font-body-elegant text-white/60 text-xs">局部 LISA 集聚状态</span>
+                            <span id="lisa-cluster" class="font-metric-value text-xl text-tertiary-fixed-dim">全省概览</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="fixed left-12 bottom-16 w-54 glass-panel p-2 rounded-sm z-40 pointer-events-auto">
+        <h4 class="font-metric-label text-xs text-white/60 uppercase mb-2 border-b border-white/10 pb-2 flex items-center">
+            <span class="material-symbols-outlined mr-2 text-[10px]">palette</span>地价分级渲染 (CNY/公顷)
+        </h4>
+        <div class="space-y-1 text-xs text-white/80 font-body-elegant">
+            <div class="flex items-center"><span class="w-3 h-3 rounded-sm bg-[#003a4c] mr-3 border border-white/10"></span> &lt; 400 (极低值区)</div>
+            <div class="flex items-center"><span class="w-3 h-3 rounded-sm bg-[#00566b] mr-3 border border-white/10"></span> 400 - 800 (低值区)</div>
+            <div class="flex items-center"><span class="w-3 h-3 rounded-sm bg-[#14d1ff] mr-3"></span> 800 - 1500 (中值区)</div>
+            <div class="flex items-center"><span class="w-3 h-3 rounded-sm bg-[#4cd6ff] mr-3 shadow-[0_0_8px_rgba(76,214,255,0.6)]"></span> 1500 - 2500 (高值区)</div>
+           <div class="flex items-center"><span class="w-3 h-3 rounded-sm bg-[#a6e6ff] mr-3 shadow-[0_0_10px_#a6e6ff]"></span> > 2500 (极高值区)</div>
+        </div>
+    </div>
+
+    <div class="fixed right-0 top-1/2 -translate-y-1/2 flex flex-col space-y-4 z-50 pointer-events-auto">
+        <button id="console-btn" onclick="togglePanel('console-panel', 'console-btn')" class="hidden bg-surface-container-high/90 p-3 rounded-l-lg border-y border-l border-white/20 text-white hover:bg-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-md transition-all group" title="展开智库控制台">
+            <span class="material-symbols-outlined group-hover:-translate-x-1 transition-transform">dashboard</span>
+        </button>
+        <button id="indicators-btn" onclick="togglePanel('indicators-panel', 'indicators-btn')" class="hidden bg-surface-container-high/90 p-3 rounded-l-lg border-y border-l border-white/20 text-white hover:bg-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-md transition-all group" title="展开空间集聚指标">
+            <span class="material-symbols-outlined group-hover:-translate-x-1 transition-transform">analytics</span>
+        </button>
+    </div>
+
+    <div class="fixed bottom-0 w-full h-32 z-40 bg-gradient-to-t from-background to-transparent pointer-events-none">
+        <div class="flex flex-col justify-end items-center px-12 pb-12 w-full h-full pointer-events-auto">
+            <div class="flex items-center w-full max-w-5xl space-x-8">
+                <div class="relative flex-grow h-12 flex items-center">
+                    <input type="range" id="timeline-slider" min="0" max="2" step="1" value="2" class="w-full">
+                    <div id="timeline-labels" class="absolute w-full flex justify-between px-1 -bottom-6 pointer-events-none">
+                        <span class="text-xs text-white/40 transition-all">2015年</span>
+                        <span class="text-xs text-white/40 transition-all text-center">2019年</span>
+                        <span class="text-sm text-white font-bold transition-all text-right">2024年</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // === 数据字典 ===
+    const yearList = ["2015", "2019", "2024"];
+    let allLiaoningFeatures = []; 
+    let currentIndex = 2; 
+    let currentLandType = '住'; 
+    let currentCityProps = null;
+    let provincialData = {}; 
+
+    const sdeTypeMap = {'综': 'Zong', '住': 'Zhu', '商': 'Shang', '工': 'Gong'};
+
+    const globalMoranData = {
+        "2015": { "综": { index: -0.2359, status: "空间随机分配" }, "商": { index: -0.1096, status: "空间随机分配" }, "住": { index: 0.3387, status: "显著空间聚集 (H-H/L-L)" }, "工": { index: -0.2588, status: "空间随机分配" } },
+        "2019": { "综": { index: -0.1041, status: "空间随机分配" }, "商": { index: -0.1749, status: "空间随机分配" }, "住": { index: -0.1719, status: "空间随机分配" }, "工": { index: -0.1874, status: "空间随机分配" } },
+        "2024": { "综": { index: -0.1583, status: "空间随机分配" }, "商": { index: -0.0770, status: "空间随机分配" }, "住": { index: 0.2410, status: "向聚集地聚集 (边缘明显)" }, "工": { index: -0.2378, status: "空间随机分配" } }
+    };
+
+    const typeNameMap = {'综': '综合', '住': '住宅', '商': '商业', '工': '工矿'};
+
+    const cityDescriptions = {
+        "辽宁省": "中国东北地区的经济、文化和交通中心，地处环渤海经济圈。近年来正处于老工业基地振兴与产业转型升级的关键期，土地市场展现出显著的空间分异与重构特征。",
+        "沈阳市": "辽宁省省会及沈阳都市圈核心，东北亚国际化中心城市。其土地市场受工业遗产转化、城市更新及高端要素集聚驱动明显，地价长期处于全省高地。",
+        "大连市": "辽宁沿海经济带的核心城市与国际航运中心，对外开放水平高。凭借优越的滨海区位与商贸物流优势，其商业与住宅地价空间溢价效应显著。",
+        "鞍山市": "享有“钢都”美誉的重要钢铁工业基地。当前正积极推动资源型城市转型与生态修复，土地利用结构不断优化，地价演化反映出强烈的产业更迭特征。",
+        "抚顺市": "历史悠久的重工业城市与新材料产业基地。老工业基地振兴与采煤沉陷区综合治理是其土地空间演化与价值重构的重要背景。",
+        "本溪市": "以钢铁和医药产业为主的“药都”，地处辽东山区。生态保护底线与工业用地扩张的平衡，深刻影响着其地价的空间分布格局。",
+        "丹东市": "中国最大的边境城市，沿江沿海区位独特。边贸物流与旅游康养产业的蓬勃发展，正逐渐释放其沿江地带的土地开发潜力。",
+        "锦州市": "辽西走廊的重要枢纽和港口城市，连接东北与华北。物流仓储与临港产业的快速聚集，是其地价演化与空间扩张的关键驱动力。",
+        "营口市": "环渤海重要的综合性港口城市，民营经济极具活力。临港工业与商贸物流的繁荣，持续带动着其沿海轴线土地价值的提升。",
+        "阜新市": "全国首个资源枯竭型城市经济转型试点。近年来大力发展新能源与农产品深加工，土地市场正处于新旧动能转换下的价值重构期。",
+        "辽阳市": "辽宁省历史文化名城，以石化和轻纺工业为主。随着沈辽鞍营经济带的建设，与沈阳的同城化发展深刻影响着其地价空间格局。",
+        "盘锦市": "重要的石油化工基地和“鱼米之乡”。依托辽河油田与得天独厚的湿地生态资源，展现出工业发展与生态保护并重的土地利用特征。",
+        "铁岭市": "辽北重要的农业和农产品深加工基地，沈阳都市圈副中心城市。其南部新城的土地价值受沈阳辐射带动作用日益明显。",
+        "朝阳市": "辽西腹地的重要节点城市，连接京津冀协同发展区。新能源产业与文旅产业的布局，正逐渐成为其土地开发与价值增长的新热点。",
+        "葫芦岛市": "被誉为“关外第一市”的滨海工业与旅游城市。石化与造船业的升级以及滨海旅游的开发，构成了其地价演化的双重动力。"
+    };
+
+    // === 分析图层的开关逻辑：动态判断在哪个地图上 ===
+    function toggleAnalysisLayer(event, layerId, navId) {
+        if(event) event.preventDefault(); 
+        const infoBox = document.getElementById('main-info-box');
+        if (infoBox) {
+            infoBox.style.opacity = '0';
+            infoBox.style.pointerEvents = 'none';
+        }
+
+        // 核心修改：判断当前要操作的图层在底层(map)还是表层(overlayMap)
+        let targetMap = (layerId === 'heatmap-layer') ? map : overlayMap;
+
+        if (!targetMap || !targetMap.getLayer(layerId)) {
+            alert("【系统提示】图层还在加载中，请稍等一两秒再点击！");
+            return;
+        }
+        
+        const visibility = targetMap.getLayoutProperty(layerId, 'visibility');
+        const navEl = document.getElementById(navId);
+        
+        if (visibility === 'visible' || visibility === undefined) {
+            targetMap.setLayoutProperty(layerId, 'visibility', 'none');
+            // 如果关的是SDE，把它的附带点也关掉
+            if (layerId === 'sde-layer' && targetMap.getLayer('sde-point-layer')) targetMap.setLayoutProperty('sde-point-layer', 'visibility', 'none');
+
+            navEl.classList.replace('text-white', 'text-white/40');
+            navEl.classList.remove('font-bold', 'border-b', 'border-white/60');
+        } else {
+            targetMap.setLayoutProperty(layerId, 'visibility', 'visible');
+            if (layerId === 'sde-layer' && targetMap.getLayer('sde-point-layer')) targetMap.setLayoutProperty('sde-point-layer', 'visibility', 'visible');
+
+            navEl.classList.replace('text-white/40', 'text-white');
+            navEl.classList.add('font-bold', 'border-b', 'border-white/60');
+        }
+    }
+
+    function togglePanel(panelId, btnId) {
+        const panel = document.getElementById(panelId);
+        const btn = document.getElementById(btnId);
+        if (panel.classList.contains('opacity-0')) {
+            panel.classList.remove('opacity-0', 'pointer-events-none', 'translate-x-12');
+            btn.classList.add('hidden');
+            if (panelId === 'console-panel') {
+                const indicatorsPanel = document.getElementById('indicators-panel');
+                indicatorsPanel.classList.remove('right-6');
+                indicatorsPanel.classList.add('right-[340px]');
+            }
+        } else {
+            panel.classList.add('opacity-0', 'pointer-events-none', 'translate-x-12');
+            btn.classList.remove('hidden');
+            if (panelId === 'console-panel') {
+                const indicatorsPanel = document.getElementById('indicators-panel');
+                indicatorsPanel.classList.remove('right-[340px]');
+                indicatorsPanel.classList.add('right-6');
+            }
+        }
+    }
+
+   function resetToProvince() { 
+        currentCityProps = null; 
+        updateUI(); 
+        const infoBox = document.getElementById('main-info-box');
+        if (infoBox) {
+            infoBox.style.opacity = '1';
+            infoBox.style.pointerEvents = 'auto';
+        }
+    }
+
+    function changeLandType(type) {
+        currentLandType = type;
+        const types = ['住', '商', '工', '综'];
+        types.forEach(t => {
+            const btn = document.getElementById('type-' + t);
+            if (t === type) {
+                btn.className = "text-xs text-white pb-1 border-b-2 border-secondary transition-all";
+            } else {
+                btn.className = "text-xs text-white/40 hover:text-white pb-1 border-b-2 border-transparent transition-all";
+            }
+        });
+        updateUI(); 
+    }
+
+    const myChart = echarts.init(document.getElementById('line-chart'));
+    const chartOption = {
+        backgroundColor: 'transparent',
+        grid: { top: 10, bottom: 0, left: 0, right: 0 },
+        xAxis: { type: 'category', data: ['2015', '2019', '2024'], show: false },
+        yAxis: { type: 'value', show: false },
+        series: [{ data: [0, 0, 0], type: 'bar', itemStyle: { color: '#14d1ff', borderRadius: [2, 2, 0, 0] }, barWidth: '40%' }]
+    };
+    myChart.setOption(chartOption);
+
+    // ==========================================
+    // 双地图架构初始化
+    // ==========================================
+    const map = new maplibregl.Map({
+        container: 'map', 
+        style: {
+            'version': 8,
+            'sources': { 'carto-dark': { 'type': 'raster', 'tiles': ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], 'tileSize': 256 } },
+            'layers': [{ 'id': 'carto-dark-layer', 'type': 'raster', 'source': 'carto-dark' }]
+        },
+        // 【修改这里】经度从 122.5 改为 124.2，让中心点东移，地图视觉上向左靠
+        center: [124.9, 41.0], zoom: 6, pitch: 30 
+    });
+
+    const overlayMap = new maplibregl.Map({
+        container: 'overlay-map',
+        style: { 'version': 8, 'sources': {}, 'layers': [] }, 
+        // 【修改这里】同步修改上层地图的中心点
+        center: [124.2, 41.0], zoom: 6, pitch: 30,
+        interactive: false 
+    });
+    function syncMaps() {
+        overlayMap.jumpTo({ center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
+    }
+    map.on('move', syncMaps);
+
+    // === 更新 UI 逻辑 ===
+    function updateUI() {
+        const year = yearList[currentIndex];
+        const priceField = 'F' + year + '_' + currentLandType; 
+        
+        const labels = document.getElementById('timeline-labels').children;
+        for(let i=0; i<3; i++) {
+            labels[i].className = (i === currentIndex) ? "text-sm text-white font-bold transition-all" : "text-xs text-white/40 transition-all";
+        }
+
+        const mData = globalMoranData[year][currentLandType];
+        document.getElementById('moran-title').innerText = `全省${typeNameMap[currentLandType]} Moran's I`;
+        document.getElementById('chart-title').innerText = `${typeNameMap[currentLandType]}地价时序演化`;
+        document.getElementById('morans-i').innerText = mData.index.toFixed(3);
+        document.getElementById('moran-bar').style.width = Math.max(5, Math.abs(mData.index * 100)) + '%';
+
+        // 1. 底层 map 更新（地价块 和 核密度图）
+        if (map.getLayer('landprice-layer')) {
+            map.setPaintProperty('landprice-layer', 'fill-color', [
+                'step', ['get', priceField], '#003a4c', 400, '#00566b', 800, '#14d1ff', 1500, '#4cd6ff', 2500, '#a6e6ff'  
+            ]);
+        }
+        
+        if (map.getSource('kde-points')) {
+            const kdePath = `./Pt_F20/Pt_F${year}_${currentLandType}_temp.json`;
+            map.getSource('kde-points').setData(kdePath);
+            map.setPaintProperty('heatmap-layer', 'heatmap-weight', [
+                'interpolate', ['linear'], ['get', priceField], 0, 0, 2500, 1
+            ]);
+        }
+        
+        // 2. 表层 overlayMap 更新（SDE图 和 高亮框）
+        if (overlayMap.getSource('sde-data')) {
+            const sdeType = sdeTypeMap[currentLandType]; 
+            const sdePath = `./SDE_F20/SDE_F${year}_${sdeType}_temp.json`;
+            overlayMap.getSource('sde-data').setData(sdePath);
+        }
+        
+        if (overlayMap.getSource('sde-point-data')) {
+            const sdeType = sdeTypeMap[currentLandType]; 
+            const sdePointPath = `./SDE_F20/SDE_F${year}_${sdeType}_Point_temp.json`;
+            overlayMap.getSource('sde-point-data').setData(sdePointPath);
+        }
+
+        if (geoDetectorChart) {
+            let qValues = [0.85, 0.72, 0.65, 0.55, 0.90]; 
+            if (currentLandType === '工') qValues = [0.45, 0.50, 0.92, 0.88, 0.60]; 
+            if (currentLandType === '住') qValues = [0.95, 0.88, 0.40, 0.30, 0.70]; 
+            geoDetectorChart.setOption({ series: [{ data: [{ value: qValues, name: '因子解释力(q值)' }] }] });
+        }
+
+        if (currentCityProps) {
+            document.getElementById('price-title').innerText = `当前城市均价`;
+            const currentCityName = currentCityProps['市名'] || '城市';
+            document.getElementById('city-name').innerText = currentCityName;
+            document.getElementById('city-desc').innerText = cityDescriptions[currentCityName] || '暂无介绍...';
+            
+            const priceVal = currentCityProps[priceField];
+            document.getElementById('city-price').innerText = priceVal ? parseFloat(priceVal).toFixed(1) : '--';
+            
+            const shortYear = year.substring(2);
+            let lisaVal = currentCityProps['L' + shortYear + '_' + currentLandType];
+            if (!lisaVal || lisaVal.trim() === '') lisaVal = '不显著';
+            document.getElementById('lisa-cluster').innerText = lisaVal;
+
+            myChart.setOption({ 
+                series: [{ 
+                    data: [currentCityProps['F2015_' + currentLandType] || 0, currentCityProps['F2019_' + currentLandType] || 0, currentCityProps['F2024_' + currentLandType] || 0] 
+                }] 
+            });
+        } else {
+            document.getElementById('price-title').innerText = `当前全省均价`;
+            document.getElementById('city-name').innerText = '辽宁省';
+            document.getElementById('city-desc').innerText = cityDescriptions['辽宁省'];
+            if (provincialData[year] && provincialData[year][currentLandType]) {
+                document.getElementById('city-price').innerText = provincialData[year][currentLandType];
+            } else {
+                document.getElementById('city-price').innerText = '--';
+            }
+            document.getElementById('lisa-cluster').innerText = mData.status; 
+            if(Object.keys(provincialData).length > 0) {
+                 myChart.setOption({ series: [{ data: [provincialData['2015'][currentLandType], provincialData['2019'][currentLandType], provincialData['2024'][currentLandType]] }] });
+            }
+        }
+    }
+
+    // === 数据加载与渲染 ===
+    Promise.all([
+        new Promise(resolve => map.on('load', resolve)),
+        new Promise(resolve => overlayMap.on('load', resolve))
+    ]).then(() => {
+        fetch('./Liaoning_Final_Result.geojson')
+            .then(res => res.json())
+            .then(data => {
+                allLiaoningFeatures = data.features; 
+                
+                // 1. 底层地图(有滤镜)：挂载地价多边形和核密度图，利用滤镜实现完美融合！
+                map.addSource('liaoning', { type: 'geojson', data: data });
+                map.addLayer({
+                    'id': 'landprice-layer', 'type': 'fill', 'source': 'liaoning',
+                    'paint': { 'fill-color': '#003a4c', 'fill-opacity': 0.8, 'fill-outline-color': '#ffffff' }
+                });
+
+                // 还原您最初喜欢的那组红黄蓝高饱和度颜色，滤镜会将其完美压暗融合
+                map.addSource('kde-points', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                map.addLayer({
+                    'id': 'heatmap-layer', 'type': 'heatmap', 'source': 'kde-points',
+                    'layout': { 'visibility': 'none' }, 
+                    'paint': {
+                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 6, 1, 9, 3],
+                    'heatmap-color': [
+                        'interpolate', ['linear'], ['heatmap-density'],
+                        0, 'rgba(0,0,0,0)',         // 起点完全透明
+                        0.2, '#00b4d8',            // 浅蓝色
+                        0.5, '#ffff3f',            // 明亮的黄色
+                        0.8, '#ff5400',            // 橙色
+                        1, '#ff0000'               // 核心区深红色
+                    ],
+                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 6, 35, 10, 100], // 稍微加宽半径
+                    'heatmap-opacity': 0.9         // 提高整体不透明度
+                    }
+                });
+
+                // 2. 表层地图(无滤镜透明)：仅挂载SDE金色线条和投资高亮框！
+                overlayMap.addSource('liaoning', { type: 'geojson', data: data });
+                overlayMap.addLayer({
+                    'id': 'highlight-layer',
+                    'type': 'line',
+                    'source': 'liaoning',
+                    'layout': { 'visibility': 'none' },
+                    'paint': {
+                        'line-color': '#edc06b', // 纯正不受污染的金色边框
+                        'line-width': 5,
+                        'line-blur': 2
+                    }
+                });
+
+                overlayMap.addSource('sde-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                overlayMap.addLayer({
+                    'id': 'sde-layer', 'type': 'line', 'source': 'sde-data',
+                    'layout': { 'visibility': 'none' }, 
+                    'paint': { 'line-color': '#edc06b', 'line-width': 3, 'line-dasharray': [2, 2] } // 纯正的金色SDE
+                });
+                
+                overlayMap.addSource('sde-point-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                overlayMap.addLayer({
+                    'id': 'sde-point-layer',
+                    'type': 'circle',
+                    'source': 'sde-point-data',
+                    'layout': { 'visibility': 'none' }, 
+                    'paint': {
+                        'circle-color': '#ff4d4f', // 纯正的亮红心点
+                        'circle-radius': 6,        
+                        'circle-stroke-width': 2,  
+                        'circle-stroke-color': '#ffffff'
+                    }
+                });
+
+                const features = data.features;
+                const types = ['住', '商', '工', '综'];
+                yearList.forEach(y => {
+                    provincialData[y] = {};
+                    types.forEach(t => {
+                        let sum = 0, count = 0;
+                        features.forEach(f => {
+                            const val = f.properties['F' + y + '_' + t];
+                            if (val && !isNaN(val)) { sum += parseFloat(val); count++; }
+                        });
+                        provincialData[y][t] = count > 0 ? (sum / count).toFixed(1) : 0;
+                    });
+                });
+
+                updateUI();
+            })
+            .catch(err => console.error("加载 GeoJSON 出错:", err));
+
+        document.getElementById('timeline-slider').addEventListener('input', (e) => {
+            currentIndex = parseInt(e.target.value);
+            updateUI();
+        });
+
+        // 交互事件仍绑定在底层的 map 上
+        map.on('click', 'landprice-layer', (e) => {
+            currentCityProps = e.features[0].properties;
+            updateUI(); 
+        });
+        map.on('mouseenter', 'landprice-layer', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'landprice-layer', () => map.getCanvas().style.cursor = '');
+        map.on('click', (e) => {
+            const features = map.queryRenderedFeatures(e.point, { layers: ['landprice-layer'] });
+            if (!features.length) resetToProvince();
+        });
+    });
+
+    function openInvestModal() { document.getElementById('invest-modal').classList.remove('hidden'); }
+    function closeInvestModal() { 
+        document.getElementById('invest-modal').classList.add('hidden'); 
+        if(overlayMap.getLayer('highlight-layer')) overlayMap.setLayoutProperty('highlight-layer', 'visibility', 'none');
+        const infoBox = document.getElementById('main-info-box');
+        if (infoBox) { infoBox.style.opacity = '1'; infoBox.style.pointerEvents = 'auto'; }
+    }
+    
+    function calculateInvestment() {
+        const type = document.getElementById('invest-type').value;
+        const budget = document.getElementById('invest-budget').value;
+        const analysis = allLiaoningFeatures.map(f => {
+            const p24 = parseFloat(f.properties['F2024_' + type]) || 0;
+            const p19 = parseFloat(f.properties['F2019_' + type]) || 0;
+            const growth = p19 > 0 ? (p24 - p19) / p19 : 0;
+            return { name: f.properties['市名'], price: p24, growth: growth };
+        });
+        let recommended = [];
+        if (budget === 'low') {
+            const avgPrice = analysis.reduce((a, b) => a + b.price, 0) / analysis.length;
+            recommended = analysis.filter(a => a.price <= avgPrice).sort((a,b) => b.growth - a.growth).slice(0, 3);
+        } else {
+            recommended = analysis.sort((a,b) => b.growth - a.growth).slice(0, 3);
+        }
+        document.getElementById('invest-result').classList.remove('hidden');
+        document.getElementById('recommended-cities').innerHTML = recommended.map(city => `
+            <div class="flex justify-between items-center bg-white/5 p-3 rounded border-l-2 border-secondary">
+                <div class="text-white font-bold">${city.name} <span class="text-[10px] font-normal opacity-50">(${typeNameMap[type]})</span></div>
+                <div class="text-secondary text-xs">增长率: ${(city.growth * 100).toFixed(1)}%</div>
+            </div>
+        `).join('');
+        
+        if (overlayMap.getLayer('highlight-layer')) {
+            const names = recommended.map(c => c.name);
+            overlayMap.setFilter('highlight-layer', ['in', ['get', '市名'], ['literal', names]]);
+            overlayMap.setLayoutProperty('highlight-layer', 'visibility', 'visible');
+        }
+    }
+
+    let geoDetectorChart = null; 
+
+    function openDeepAnalysis() {
+        document.getElementById('deep-analysis-panel').classList.remove('-translate-x-full');
+        if (!geoDetectorChart) {
+            setTimeout(() => {
+                geoDetectorChart = echarts.init(document.getElementById('geodetector-chart'));
+                geoDetectorChart.setOption({
+                    tooltip: {},
+                    radar: {
+                        indicator: [
+                            { name: 'GDP驱动', max: 1}, { name: '人口流动', max: 1},
+                            { name: '产业结构', max: 1}, { name: '路网密度', max: 1}, { name: '政策强度', max: 1}
+                        ],
+                        radius: '60%',
+                        splitArea: { show: false },
+                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+                        axisName: { color: '#bee9ff', fontSize: 10 }
+                    },
+                    series: [{
+                        type: 'radar',
+                        data: [{ value: [0.85, 0.72, 0.65, 0.55, 0.90], name: 'q值 (地理探测器单因子)', itemStyle: {color: '#14d1ff'}, areaStyle: {color: 'rgba(20,209,255,0.2)'}, lineStyle: {width: 2} }]
+                    }]
+                });
+            }, 500);
+        }
+    }
+    function closeDeepAnalysis() { document.getElementById('deep-analysis-panel').classList.add('-translate-x-full'); }
+
+    function openImageLightbox(imgSrc) {
+        const lightbox = document.getElementById('image-lightbox');
+        const img = document.getElementById('lightbox-img');
+        img.src = imgSrc; 
+        lightbox.classList.remove('hidden');
+        setTimeout(() => { lightbox.classList.remove('opacity-0'); img.classList.remove('scale-95'); img.classList.add('scale-100'); }, 10);
+    }
+    function closeImageLightbox() {
+        const lightbox = document.getElementById('image-lightbox');
+        const img = document.getElementById('lightbox-img');
+        lightbox.classList.add('opacity-0'); img.classList.remove('scale-100'); img.classList.add('scale-95');
+        setTimeout(() => { lightbox.classList.add('hidden'); img.src = ''; }, 300);
+    }
+
+    function openPolicyPanel() {
+        const panel = document.getElementById('policy-panel');
+        panel.classList.remove('translate-x-[120%]', 'opacity-0', 'pointer-events-none');
+        panel.classList.add('pointer-events-auto');
+    }
+    function closePolicyPanel() {
+        const panel = document.getElementById('policy-panel');
+        panel.classList.add('translate-x-[120%]', 'opacity-0', 'pointer-events-none');
+        panel.classList.remove('pointer-events-auto');
+        clearPolicyHighlight();
+    }
+    function highlightPolicyCities(cities) {
+        if (overlayMap.getLayer('highlight-layer')) {
+            overlayMap.setFilter('highlight-layer', ['in', ['get', '市名'], ['literal', cities]]);
+            overlayMap.setLayoutProperty('highlight-layer', 'visibility', 'visible');
+            overlayMap.setPaintProperty('highlight-layer', 'line-color', '#14d1ff'); 
+        }
+    }
+    function clearPolicyHighlight() {
+        if (overlayMap.getLayer('highlight-layer')) {
+            overlayMap.setLayoutProperty('highlight-layer', 'visibility', 'none');
+            overlayMap.setPaintProperty('highlight-layer', 'line-color', '#edc06b'); 
+        }
+    }
+    </script>
+    
+    <div id="invest-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div class="glass-panel p-8 rounded-lg w-[400px] relative border border-white/20 shadow-2xl">
+            <button onclick="closeInvestModal()" class="absolute top-4 right-4 text-white/50 hover:text-white transition-colors">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+            <h3 class="text-xl font-display-title font-bold text-white mb-6 flex items-center">
+                <span class="material-symbols-outlined mr-2 text-secondary">analytics</span> 投资洼地筛选器
+            </h3>
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-[10px] tracking-widest text-white/40 mb-2 uppercase font-bold">目标地类</label>
+                    <select id="invest-type" class="w-full bg-[#0b2533] border border-white/10 text-white rounded p-3 outline-none">
+                        <option value="住">住宅用地 (Residential)</option>
+                        <option value="商">商业用地 (Commercial)</option>
+                        <option value="工">工矿仓储 (Industrial)</option>
+                        <option value="综">综合用地 (Comprehensive)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] tracking-widest text-white/40 mb-2 uppercase font-bold">投资预算偏好</label>
+                    <select id="invest-budget" class="w-full bg-[#0b2533] border border-white/10 text-white rounded p-3 outline-none">
+                        <option value="low">低预算 (地价洼地优选)</option>
+                        <option value="mid">中等预算 (平衡型收益)</option>
+                        <option value="high">高预算 (核心资产布局)</option>
+                    </select>
+                </div>
+                <button onclick="calculateInvestment()" class="w-full py-4 bg-secondary text-[#003543] font-bold rounded-sm mt-4 transition-all flex items-center justify-center">
+                    <span class="material-symbols-outlined mr-2">rocket_launch</span> 开始智能测算
+                </button>
+            </div>
+            <div id="invest-result" class="mt-8 pt-6 border-t border-white/10 hidden">
+                <p class="text-[10px] tracking-widest text-white/40 mb-3 uppercase">测算模型推荐：</p>
+                <div id="recommended-cities" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="deep-analysis-panel" class="fixed left-0 top-20 bottom-32 w-1/2 bg-[#0b1426]/95 backdrop-blur-xl z-[60] transform -translate-x-full transition-transform duration-700 ease-in-out flex flex-col border-r border-white/10 shadow-[20px_0_50px_rgba(0,0,0,0.5)]">
+        <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+            <h2 class="text-2xl font-display-title font-bold text-white flex items-center"><span class="material-symbols-outlined mr-3 text-secondary">history_edu</span>核心驱动因子深度剖析</h2>
+            <button onclick="closeDeepAnalysis()" class="text-white/50 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="flex-grow overflow-y-auto p-8 space-y-8">
+            <div>
+                <h3 class="text-xs text-white/50 tracking-widest uppercase mb-3 flex items-center">
+                    <span class="material-symbols-outlined text-[14px] mr-1">map</span> 驱动因素空间分布 (GeoDetector Result)
+                </h3>
+                <div class="w-full h-80 bg-black/40 rounded-lg border border-white/10 relative overflow-hidden group cursor-pointer" onclick="openImageLightbox('./factor.png')">
+                     <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                         <span class="material-symbols-outlined text-white text-4xl drop-shadow-lg">zoom_in</span>
+                    </div>
+                    <img src="./factor.png" class="absolute inset-0 w-full h-full object-contain opacity-90 group-hover:scale-105 transition-transform duration-700">
+                    <div class="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white/40 z-10">Spatial Driving Factors.png</div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-xs text-white/50 tracking-widest uppercase mb-3 flex items-center"><span class="material-symbols-outlined text-[14px] mr-1">radar</span> GeoDetector Q值提取</h3>
+                <div class="flex space-x-6">
+                    <div id="geodetector-chart" class="h-64 flex-grow bg-black/20 rounded border border-white/5"></div>
+                    <div class="w-1/3 text-sm font-light text-white/70 leading-relaxed space-y-4">
+                        <div class="bg-secondary/10 p-4 rounded border-l-2 border-secondary">
+                            <strong class="text-white block mb-1">主导因子剖析</strong>
+                            沈阳、大连等地价演变呈现显著的 <span class="text-secondary font-bold">经济主导(GDP驱动)</span>；而辽西北地区受 <span class="text-tertiary-fixed-dim font-bold">政策与人口流动</span> 影响更深。
+                        </div>
+                        <div class="bg-error/10 p-4 rounded border-l-2 border-error">
+                            <strong class="text-white block mb-1">交互增强效应</strong>
+                            双因子探测表明，任何两因子交互（如经济水平∩交通）均呈现 <span class="text-error font-bold">双因子增强</span> 或非线性增强，证实地价分异是多维叠加结果。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="policy-panel" class="fixed right-80 top-24 bottom-24 w-80 bg-[#001f2a]/95 backdrop-blur-md z-[60] transform translate-x-[120%] opacity-0 transition-all duration-700 ease-in-out rounded-l-lg border-y border-l border-white/10 shadow-2xl flex flex-col pointer-events-none">
+        <div class="p-5 border-b border-white/10 flex justify-between items-center">
+            <h2 class="text-lg font-display-title font-bold text-white flex items-center"><span class="material-symbols-outlined mr-2 text-tertiary-fixed-dim">policy</span>重大空间政策效力</h2>
+            <button onclick="closePolicyPanel()" class="text-white/50 hover:text-white"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="flex-grow overflow-y-auto p-6">
+            <div class="relative border-l border-white/20 ml-2 space-y-8 pb-10">
+                <div class="relative pl-6 cursor-pointer group" onmouseenter="highlightPolicyCities(['大连市', '丹东市', '营口市', '盘锦市', '锦州市', '葫芦岛市'])" onmouseleave="clearPolicyHighlight()">
+                    <div class="absolute w-3 h-3 bg-secondary rounded-full -left-[6.5px] top-1 group-hover:scale-150 transition-transform shadow-[0_0_10px_#14d1ff]"></div>
+                    <h4 class="text-white font-bold text-sm mb-1 group-hover:text-secondary transition-colors">辽宁沿海经济带攻坚计划</h4>
+                    <p class="text-[10px] text-white/50 mb-2 font-mono">2018 - 2020</p>
+                    <p class="text-xs text-white/70 bg-white/5 p-3 rounded leading-relaxed border border-white/5">沿海六市地价在此期间跳跃上升，核心区商业用地涨幅明显。</p>
+                </div>
+                <div class="relative pl-6 cursor-pointer group" onmouseenter="highlightPolicyCities(['沈阳市', '鞍山市', '抚顺市', '本溪市'])" onmouseleave="clearPolicyHighlight()">
+                    <div class="absolute w-3 h-3 bg-tertiary-fixed-dim rounded-full -left-[6.5px] top-1 group-hover:scale-150 transition-transform shadow-[0_0_10px_#edc06b]"></div>
+                    <h4 class="text-white font-bold text-sm mb-1 group-hover:text-tertiary-fixed-dim transition-colors">沈阳现代化都市圈规划</h4>
+                    <p class="text-[10px] text-white/50 mb-2 font-mono">2021 - 2024</p>
+                    <p class="text-xs text-white/70 bg-white/5 p-3 rounded leading-relaxed border border-white/5">都市圈核心圈层住宅用地溢价凸显，圈内协同效应增强。</p>
+                </div>
+                <div class="relative pl-6 cursor-pointer group" onmouseenter="highlightPolicyCities(['沈阳市', '大连市'])" onmouseleave="clearPolicyHighlight()">
+                    <div class="absolute w-3 h-3 bg-white rounded-full -left-[6.5px] top-1 group-hover:scale-150 transition-transform"></div>
+                    <h4 class="text-white font-bold text-sm mb-1 group-hover:text-white transition-colors">老工业基地振兴 2.0</h4>
+                    <p class="text-[10px] text-white/50 mb-2 font-mono">2016 - 2020</p>
+                    <p class="text-xs text-white/70 bg-white/5 p-3 rounded leading-relaxed border border-white/5">工矿仓储用地流转活跃度提升，有效盘活了历史存量资产。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="image-lightbox" class="hidden fixed inset-0 z-[999] bg-black/90 backdrop-blur-md flex justify-center items-center opacity-0 transition-opacity duration-300" onclick="closeImageLightbox()">
+        <button class="absolute top-8 right-8 text-white/50 hover:text-white transition-colors">
+            <span class="material-symbols-outlined text-4xl">close</span>
+        </button>
+        <img id="lightbox-img" src="" class="max-w-[95%] max-h-[95%] object-contain rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 transform scale-95 transition-transform duration-300">
+    </div>
+</body>
+</html>

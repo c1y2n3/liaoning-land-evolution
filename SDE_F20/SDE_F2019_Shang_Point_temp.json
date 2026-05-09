@@ -1,0 +1,3 @@
+{"type":"FeatureCollection", "features": [
+{"type":"Feature","geometry":{"type":"Point","coordinates":[122.72458376547229,41.16982671942345]},"properties":{"CenterX":476896.616371,"CenterY":4557646.27139,"XStdDist":118512.106111,"YStdDist":172879.276808,"Rotation":69.3662977788,"ORIG_FID":1}}
+]}
