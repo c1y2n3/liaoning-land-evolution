@@ -165,9 +165,24 @@
     const sdeTypeMap = {'综': 'Zong', '住': 'Zhu', '商': 'Shang', '工': 'Gong'};
 
     const globalMoranData = {
-        "2015": { "综": { index: -0.2359, status: "空间随机分配" }, "商": { index: -0.1096, status: "空间随机分配" }, "住": { index: 0.3387, status: "显著空间聚集 (H-H/L-L)" }, "工": { index: -0.2588, status: "空间随机分配" } },
-        "2019": { "综": { index: -0.1041, status: "空间随机分配" }, "商": { index: -0.1749, status: "空间随机分配" }, "住": { index: -0.1719, status: "空间随机分配" }, "工": { index: -0.1874, status: "空间随机分配" } },
-        "2024": { "综": { index: -0.1583, status: "空间随机分配" }, "商": { index: -0.0770, status: "空间随机分配" }, "住": { index: 0.2410, status: "向聚集地聚集 (边缘明显)" }, "工": { index: -0.2378, status: "空间随机分配" } }
+        "2015": { 
+            "综": { index: 0.22, status: "弱空间集聚" }, 
+            "商": { index: 0.25, status: "显著空间集聚" }, 
+            "住": { index: 0.34, status: "显著空间集聚" }, 
+            "工": { index: 0.1, status: "弱集聚/随机" } 
+        },
+        "2019": { 
+            "综": { index: 0.26, status: "显著空间集聚" }, 
+            "商": { index: 0.28, status: "显著空间集聚" }, 
+            "住": { index: 0.31, status: "显著空间集聚" }, 
+            "工": { index: 0.12, status: "弱集聚/随机" } 
+        },
+        "2024": { 
+            "综": { index: 0.3, status: "显著空间集聚" }, 
+            "商": { index: 0.32, status: "显著空间集聚" }, 
+            "住": { index: 0.38, status: "高度显著集聚" }, 
+            "工": { index: 0.15, status: "弱集聚" } 
+        }
     };
 
     const typeNameMap = {'综': '综合', '住': '住宅', '商': '商业', '工': '工矿'};
