@@ -38,7 +38,6 @@
         <div class="text-2xl font-display-title font-bold text-white tracking-widest">辽宁省地价演变深度分析</div>
         <nav class="hidden md:flex items-center space-x-12">
             <a class="text-white font-medium border-b border-white/60 pb-1 font-serif tracking-tight leading-none cursor-pointer" onclick="resetToProvince()">全省概览</a>
-            <a id="nav-kde" class="text-white/40 font-light hover:text-white transition-colors font-serif tracking-tight leading-none cursor-pointer" onclick="toggleAnalysisLayer(event, 'heatmap-layer', 'nav-kde')">核密度分析 (KDE)</a>
             <a id="nav-sde" class="text-white/40 font-light hover:text-white transition-colors font-serif tracking-tight leading-none cursor-pointer" onclick="toggleAnalysisLayer(event, 'sde-layer', 'nav-sde')">标准差椭圆 (SDE)</a>
             <a id="nav-invest" class="text-white/40 font-light hover:text-white transition-colors font-serif tracking-tight leading-none cursor-pointer" onclick="openInvestModal(); document.getElementById('main-info-box').style.opacity='0';">投资测算</a>
         </nav>
@@ -205,7 +204,7 @@
         "葫芦岛市": "被誉为“关外第一市”的滨海工业与旅游城市。石化与造船业的升级以及滨海旅游的开发，构成了其地价演化的双重动力。"
     };
 
-    // === 分析图层的开关逻辑：动态判断在哪个地图上 ===
+    // === 分析图层的开关逻辑 ===
     function toggleAnalysisLayer(event, layerId, navId) {
         if(event) event.preventDefault(); 
         const infoBox = document.getElementById('main-info-box');
@@ -214,8 +213,8 @@
             infoBox.style.pointerEvents = 'none';
         }
 
-        // 核心修改：判断当前要操作的图层在底层(map)还是表层(overlayMap)
-        let targetMap = (layerId === 'heatmap-layer') ? map : overlayMap;
+        // 当前分析图层（SDE等）主要位于表层
+        let targetMap = overlayMap;
 
         if (!targetMap || !targetMap.getLayer(layerId)) {
             alert("【系统提示】图层还在加载中，请稍等一两秒再点击！");
@@ -307,14 +306,12 @@
             'sources': { 'carto-dark': { 'type': 'raster', 'tiles': ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], 'tileSize': 256 } },
             'layers': [{ 'id': 'carto-dark-layer', 'type': 'raster', 'source': 'carto-dark' }]
         },
-        // 【修改这里】经度从 122.5 改为 124.2，让中心点东移，地图视觉上向左靠
         center: [124.9, 41.0], zoom: 6, pitch: 30 
     });
 
     const overlayMap = new maplibregl.Map({
         container: 'overlay-map',
         style: { 'version': 8, 'sources': {}, 'layers': [] }, 
-        // 【修改这里】同步修改上层地图的中心点
         center: [124.2, 41.0], zoom: 6, pitch: 30,
         interactive: false 
     });
@@ -339,18 +336,10 @@
         document.getElementById('morans-i').innerText = mData.index.toFixed(3);
         document.getElementById('moran-bar').style.width = Math.max(5, Math.abs(mData.index * 100)) + '%';
 
-        // 1. 底层 map 更新（地价块 和 核密度图）
+        // 1. 底层 map 更新（地价块）
         if (map.getLayer('landprice-layer')) {
             map.setPaintProperty('landprice-layer', 'fill-color', [
                 'step', ['get', priceField], '#003a4c', 400, '#00566b', 800, '#14d1ff', 1500, '#4cd6ff', 2500, '#a6e6ff'  
-            ]);
-        }
-        
-        if (map.getSource('kde-points')) {
-            const kdePath = `./Pt_F20/Pt_F${year}_${currentLandType}_temp.json`;
-            map.getSource('kde-points').setData(kdePath);
-            map.setPaintProperty('heatmap-layer', 'heatmap-weight', [
-                'interpolate', ['linear'], ['get', priceField], 0, 0, 2500, 1
             ]);
         }
         
@@ -419,31 +408,11 @@
             .then(data => {
                 allLiaoningFeatures = data.features; 
                 
-                // 1. 底层地图(有滤镜)：挂载地价多边形和核密度图，利用滤镜实现完美融合！
+                // 1. 底层地图(有滤镜)：挂载地价多边形，利用滤镜实现完美融合！
                 map.addSource('liaoning', { type: 'geojson', data: data });
                 map.addLayer({
                     'id': 'landprice-layer', 'type': 'fill', 'source': 'liaoning',
                     'paint': { 'fill-color': '#003a4c', 'fill-opacity': 0.8, 'fill-outline-color': '#ffffff' }
-                });
-
-                // 还原您最初喜欢的那组红黄蓝高饱和度颜色，滤镜会将其完美压暗融合
-                map.addSource('kde-points', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-                map.addLayer({
-                    'id': 'heatmap-layer', 'type': 'heatmap', 'source': 'kde-points',
-                    'layout': { 'visibility': 'none' }, 
-                    'paint': {
-                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 6, 1, 9, 3],
-                    'heatmap-color': [
-                        'interpolate', ['linear'], ['heatmap-density'],
-                        0, 'rgba(0,0,0,0)',         // 起点完全透明
-                        0.2, '#00b4d8',            // 浅蓝色
-                        0.5, '#ffff3f',            // 明亮的黄色
-                        0.8, '#ff5400',            // 橙色
-                        1, '#ff0000'               // 核心区深红色
-                    ],
-                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 6, 35, 10, 100], // 稍微加宽半径
-                    'heatmap-opacity': 0.9         // 提高整体不透明度
-                    }
                 });
 
                 // 2. 表层地图(无滤镜透明)：仅挂载SDE金色线条和投资高亮框！
